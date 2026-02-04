@@ -59,7 +59,25 @@ pip install -r requirements.txt
 
 ## Running the Application
 
-### Start the Backend
+### Quick Start (Using Makefile)
+
+From the project root, run both servers in separate terminals:
+
+```bash
+# Terminal 1: Start backend
+make backend
+
+# Terminal 2: Start frontend
+make frontend
+```
+
+The backend will be available at `http://127.0.0.1:8000` and the frontend at `http://localhost:8501`
+
+See all available commands with `make help`
+
+### Manual Start
+
+#### Start the Backend
 
 ```bash
 cd backend
@@ -71,7 +89,7 @@ The API will be available at `http://127.0.0.1:8000`
 
 API documentation: `http://127.0.0.1:8000/docs`
 
-### Start the Frontend
+#### Start the Frontend
 
 ```bash
 cd frontend
