@@ -1,0 +1,9 @@
+backend/.venv/
+__pycache__/
+backend/__pycache__/
+*.pyc
+.ipynb_checkpoints
+.vscode/
+.env
+Master_Data_Sets/
+backend/.venv/bin/
