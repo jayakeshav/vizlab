@@ -30,10 +30,14 @@ def load_registry():
         with open(cfg_path) as f:
             device_cfg = json.load(f)
 
-        # metrics come ONLY from config
+        # metrics come ONLY from config (preserve batch order)
         metrics = []
+        seen_metrics = set()
         for batch in device_cfg["batches"].values():
-            metrics.extend(batch["metrics"])
+            for metric in batch["metrics"]:
+                if metric not in seen_metrics:
+                    metrics.append(metric)
+                    seen_metrics.add(metric)
 
         workloads = {}
         for workload_dir in device_dir.iterdir():
@@ -55,7 +59,7 @@ def load_registry():
         DEVICE_REGISTRY[device_dir.name] = {
             "path": device_dir,
             "config": device_cfg,
-            "metrics": sorted(set(metrics)),
+            "metrics": metrics,
             "workloads": workloads,
         }
 
