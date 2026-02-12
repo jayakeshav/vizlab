@@ -74,7 +74,7 @@ def render_signal_plot(signal, metric_name):
             y=y,
             mode="lines",
             name=metric_name,
-            line=dict(width=2),
+            line=dict(width=2,color="blue"),
         )
     )
 

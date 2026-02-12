@@ -192,7 +192,7 @@ fig.add_trace(
         y=y_b,
         mode="lines",
         name=f"{device_b}::{metric_b} (B)",
-        line=dict(width=2, color="green"),
+        line=dict(width=2, color="blue"),
     ),
     row=2,
     col=1
@@ -230,7 +230,7 @@ if in_attack_a:
         col=1,
     )
 
-# Attack shading for Signal B (orange) in row 2
+# Attack shading for Signal B (red) in row 2
 in_attack_b = False
 start_b = None
 for i, v in enumerate(labels_b):
@@ -241,7 +241,7 @@ for i, v in enumerate(labels_b):
         fig.add_vrect(
             x0=start_b,
             x1=i,
-            fillcolor="orange",
+            fillcolor="red",
             opacity=0.15,
             layer="below",
             line_width=0,
@@ -254,7 +254,7 @@ if in_attack_b:
     fig.add_vrect(
         x0=start_b,
         x1=len(labels_b),
-        fillcolor="orange",
+        fillcolor="red",
         opacity=0.15,
         layer="below",
         line_width=0,
