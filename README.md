@@ -37,6 +37,18 @@ vizlab/
 
 Performance counter datasets are loaded from the configured data directory (typically `Master_Data_Sets/` containing device subdirectories with CSV files and device configs).
 
+## Data Repository (Private Submodule)
+
+`Master_Data_Sets/` is a private Git submodule. Public clones of this repo will not be able to fetch the data unless they have access to the private repository.
+
+If you have access, initialize the submodule after cloning:
+
+```bash
+git submodule update --init --recursive
+```
+
+If you do not have access, the app will run but the dataset directory will be empty.
+
 ## Setup
 
 ### Backend
