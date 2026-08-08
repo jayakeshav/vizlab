@@ -4,9 +4,13 @@ import plotly.graph_objects as go
 import numpy as np
 
 # -----------------------
-# Config
+# Config & Local Backend Import
 # -----------------------
-API_BASE = "http://127.0.0.1:8000"
+import sys
+import os
+# Append project root to path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+from backend import app as backend
 
 st.set_page_config(
     page_title="VizLab - Derived Ratios",
@@ -16,28 +20,49 @@ st.set_page_config(
 st.title("Derived Ratios")
 
 # -----------------------
-# API Helper
+# API Helper (Routed Locally)
 # -----------------------
 def api_get(path, params=None):
-    """Fetch data from backend API."""
+    """Route request locally to backend processing module."""
+    if params is None:
+        params = {}
     try:
-        r = requests.get(f"{API_BASE}{path}", params=params)
-        r.raise_for_status()
-        return r.json()
+        if path == "/devices":
+            return backend.list_devices()
+        elif path == "/variants":
+            return backend.list_variants(params.get("device"))
+        elif path == "/workloads":
+            return backend.list_workloads(params.get("device"), params.get("variant"))
+        elif path == "/runs":
+            return backend.list_runs(params.get("device"), params.get("variant"), params.get("workload"))
+        elif path == "/metrics":
+            return backend.list_metrics(params.get("device"), params.get("variant"))
+        elif path == "/signal":
+            return backend.get_signal(
+                device=params.get("device"),
+                variant=params.get("variant"),
+                workload=params.get("workload"),
+                run=params.get("run"),
+                metric=params.get("metric"),
+                window_size=params.get("window_size", 1)
+            )
+        else:
+            raise ValueError(f"Unknown local path: {path}")
     except Exception as e:
-        st.error(f"API error: {e}")
+        st.error(f"Local query error: {e}")
         st.stop()
 
 
 # -----------------------
 # Signal Fetch
 # -----------------------
-def fetch_signal(device, workload, run, metric, window_size=1):
+def fetch_signal(device, variant, workload, run, metric, window_size=1):
     """Fetch signal from backend API."""
     signal = api_get(
         "/signal",
         {
             "device": device,
+            "variant": variant,
             "workload": workload,
             "run": run,
             "metric": metric,
@@ -53,17 +78,17 @@ devices = api_get("/devices")
 # -----------------------
 # Helper function to build ratio
 # -----------------------
-def build_ratio_data(entry_id, device_sel, workload_sel, run_sel, numerator_m, denominator_m):
+def build_ratio_data(entry_id, device_sel, variant_sel, workload_sel, run_sel, numerator_m, denominator_m):
     """Fetch and build a ratio entry."""
-    if not device_sel or not workload_sel or not run_sel:
-        st.error("Device, workload, and run are required for each ratio")
+    if not device_sel or not variant_sel or not workload_sel or not run_sel:
+        st.error("Device, variant, workload, and run are required for each ratio")
         return None
 
     if numerator_m == denominator_m:
         st.error("Numerator and denominator must be different metrics")
         return None
 
-    cache_key = (device_sel, workload_sel, run_sel, numerator_m, denominator_m)
+    cache_key = (device_sel, variant_sel, workload_sel, run_sel, numerator_m, denominator_m)
 
     try:
         if cache_key in st.session_state.ratio_cache:
@@ -72,13 +97,14 @@ def build_ratio_data(entry_id, device_sel, workload_sel, run_sel, numerator_m, d
                 "entry_id": entry_id,
                 "name": cached["name"],
                 "display_name": (
-                    f"{device_sel} | {workload_sel} | {run_sel} | "
+                    f"{device_sel} ({variant_sel}) | {workload_sel} | {run_sel} | "
                     f"{numerator_m} / {denominator_m}"
                 ),
                 "x": cached["x"],
                 "y": cached["y"],
                 "labels": cached["labels"],
                 "device": device_sel,
+                "variant": variant_sel,
                 "workload": workload_sel,
                 "run": run_sel,
                 "numerator": numerator_m,
@@ -87,12 +113,14 @@ def build_ratio_data(entry_id, device_sel, workload_sel, run_sel, numerator_m, d
 
         numerator_signal = fetch_signal(
             device_sel,
+            variant_sel,
             workload_sel,
             run_sel,
             numerator_m
         )
         denominator_signal = fetch_signal(
             device_sel,
+            variant_sel,
             workload_sel,
             run_sel,
             denominator_m
@@ -116,13 +144,14 @@ def build_ratio_data(entry_id, device_sel, workload_sel, run_sel, numerator_m, d
         cached_ratio = {
             "name": f"{numerator_m} / {denominator_m}",
             "display_name": (
-                f"{device_sel} | {workload_sel} | {run_sel} | "
+                f"{device_sel} ({variant_sel}) | {workload_sel} | {run_sel} | "
                 f"{numerator_m} / {denominator_m}"
             ),
             "x": numerator_signal["time"]["values"],
             "y": ratio_values.tolist(),
             "labels": combined_labels,
             "device": device_sel,
+            "variant": variant_sel,
             "workload": workload_sel,
             "run": run_sel,
             "numerator": numerator_m,
@@ -134,14 +163,12 @@ def build_ratio_data(entry_id, device_sel, workload_sel, run_sel, numerator_m, d
         return {
             "entry_id": entry_id,
             "name": cached_ratio["name"],
-            "display_name": (
-                f"{device_sel} | {workload_sel} | {run_sel} | "
-                f"{numerator_m} / {denominator_m}"
-            ),
+            "display_name": cached_ratio["display_name"],
             "x": cached_ratio["x"],
             "y": cached_ratio["y"],
             "labels": cached_ratio["labels"],
             "device": device_sel,
+            "variant": variant_sel,
             "workload": workload_sel,
             "run": run_sel,
             "numerator": numerator_m,
@@ -169,6 +196,7 @@ if "ratio_search_entries" not in st.session_state:
         {
             "id": 0,
             "device": None,
+            "variant": None,
             "workload": None,
             "run": None,
             "numerator": None,
@@ -177,13 +205,14 @@ if "ratio_search_entries" not in st.session_state:
     ]
     st.session_state.ratio_entry_counter = 1
 else:
-    # Migrate old entries to have IDs if they don't
+    # Migrate old entries to have IDs and variant if they don't
     max_id = -1
     for entry in st.session_state.ratio_search_entries:
+        if "variant" not in entry:
+            entry["variant"] = None
         if "id" not in entry:
-            if "id" not in entry:
-                max_id += 1
-                entry["id"] = max_id
+            max_id += 1
+            entry["id"] = max_id
         else:
             max_id = max(max_id, entry["id"])
     
@@ -214,7 +243,16 @@ for ratio_idx, entry in enumerate(st.session_state.ratio_search_entries):
         ) if devices else None
 
     with col2:
-        workloads = api_get("/workloads", {"device": device_sel}) if device_sel else []
+        variants = api_get("/variants", {"device": device_sel}) if device_sel else []
+        variant_sel = st.selectbox(
+            "Variant/Attack",
+            variants,
+            index=variants.index(entry["variant"]) if entry["variant"] in variants else 0,
+            key=f"variant_sel_{ratio_idx}"
+        ) if variants else None
+
+    with col3:
+        workloads = api_get("/workloads", {"device": device_sel, "variant": variant_sel}) if device_sel and variant_sel else []
         workload_sel = st.selectbox(
             "Workload",
             workloads,
@@ -222,11 +260,12 @@ for ratio_idx, entry in enumerate(st.session_state.ratio_search_entries):
             key=f"workload_sel_{ratio_idx}"
         ) if workloads else None
 
-    with col3:
+    col4, col5, col6 = st.columns(3)
+    with col4:
         runs = api_get(
             "/runs",
-            {"device": device_sel, "workload": workload_sel}
-        ) if device_sel and workload_sel else []
+            {"device": device_sel, "variant": variant_sel, "workload": workload_sel}
+        ) if device_sel and variant_sel and workload_sel else []
         run_sel = st.selectbox(
             "Run",
             runs,
@@ -234,10 +273,9 @@ for ratio_idx, entry in enumerate(st.session_state.ratio_search_entries):
             key=f"run_sel_{ratio_idx}"
         ) if runs else None
 
-    metrics = api_get("/metrics", {"device": device_sel}) if device_sel else []
+    metrics = api_get("/metrics", {"device": device_sel, "variant": variant_sel}) if device_sel and variant_sel else []
 
-    col4, col5, col6 = st.columns([1, 1, 1])
-    with col4:
+    with col5:
         numerator_m = st.selectbox(
             "Numerator metric",
             metrics,
@@ -245,7 +283,7 @@ for ratio_idx, entry in enumerate(st.session_state.ratio_search_entries):
             key=f"numerator_metric_{ratio_idx}"
         ) if metrics else None
 
-    with col5:
+    with col6:
         denominator_m = st.selectbox(
             "Denominator metric",
             metrics,
@@ -253,13 +291,13 @@ for ratio_idx, entry in enumerate(st.session_state.ratio_search_entries):
             key=f"denominator_metric_{ratio_idx}"
         ) if metrics else None
 
-    with col6:
-        st.write("")
-        st.write("")
+    col7, col8, col9 = st.columns([1, 1, 1])
+    with col7:
         if st.button("Plot this ratio", key=f"plot_ratio_btn_{ratio_idx}"):
             ratio_data = build_ratio_data(
                 entry["id"],
                 device_sel,
+                variant_sel,
                 workload_sel,
                 run_sel,
                 numerator_m,
@@ -269,8 +307,7 @@ for ratio_idx, entry in enumerate(st.session_state.ratio_search_entries):
                 st.session_state.ratios[entry["id"]] = ratio_data
                 st.rerun()
 
-    col7, col8, col9 = st.columns([1, 1, 1])
-    with col7:
+    with col8:
         if st.button("Duplicate search", key=f"duplicate_search_btn_{ratio_idx}"):
             new_id = st.session_state.ratio_entry_counter
             st.session_state.ratio_entry_counter += 1
@@ -278,6 +315,7 @@ for ratio_idx, entry in enumerate(st.session_state.ratio_search_entries):
                 {
                     "id": new_id,
                     "device": device_sel,
+                    "variant": variant_sel,
                     "workload": workload_sel,
                     "run": run_sel,
                     "numerator": numerator_m,
@@ -286,7 +324,7 @@ for ratio_idx, entry in enumerate(st.session_state.ratio_search_entries):
             )
             st.rerun()
 
-    with col8:
+    with col9:
         if st.button("Delete search", key=f"delete_search_btn_{ratio_idx}"):
             if len(st.session_state.ratio_search_entries) > 1:
                 entry_id = entry["id"]
@@ -297,6 +335,7 @@ for ratio_idx, entry in enumerate(st.session_state.ratio_search_entries):
                 st.session_state.ratio_search_entries[0] = {
                     "id": st.session_state.ratio_search_entries[0]["id"],
                     "device": None,
+                    "variant": None,
                     "workload": None,
                     "run": None,
                     "numerator": None,

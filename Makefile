@@ -1,11 +1,15 @@
-.PHONY: help backend frontend
+.PHONY: help start backend frontend
 
 help:
 	@echo "VizLab Commands"
 	@echo "==============="
-	@echo "make backend  - Start backend server (cd backend && source .venv/bin/activate && uvicorn app:app --reload)"
-	@echo "make frontend - Start frontend server (cd frontend && source .venv/bin/activate && streamlit run app.py)"
+	@echo "make start    - Start unified VizLab application (in-memory, single-server)"
+	@echo "make backend  - Start standalone FastAPI backend (optional)"
+	@echo "make frontend - Start Streamlit frontend only"
 	@echo ""
+
+start:
+	cd frontend && . ../backend/.venv/bin/activate && streamlit run app.py
 
 backend:
 	cd backend && . .venv/bin/activate && uvicorn app:app --reload

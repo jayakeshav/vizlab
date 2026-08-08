@@ -6,9 +6,16 @@ import requests
 import streamlit as st
 
 
-API_BASE = "http://127.0.0.1:8000"
-FAMILY_ORDER = ["benign", "ba", "br", "r", "noflag", "other"]
+# -----------------------
+# Config & Local Backend Import
+# -----------------------
+import sys
+import os
+# Append project root to path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+from backend import app as backend
 
+FAMILY_ORDER = ["benign", "ba", "br", "r", "noflag", "other"]
 
 st.set_page_config(
     page_title="VizLab - Scatter Explorer",
@@ -22,22 +29,43 @@ st.caption(
 
 
 def api_get(path, params=None):
-    """Fetch data from the backend API."""
+    """Route request locally to backend processing module."""
+    if params is None:
+        params = {}
     try:
-        response = requests.get(f"{API_BASE}{path}", params=params)
-        response.raise_for_status()
-        return response.json()
-    except Exception as exc:
-        st.error(f"API error: {exc}")
+        if path == "/devices":
+            return backend.list_devices()
+        elif path == "/variants":
+            return backend.list_variants(params.get("device"))
+        elif path == "/workloads":
+            return backend.list_workloads(params.get("device"), params.get("variant"))
+        elif path == "/runs":
+            return backend.list_runs(params.get("device"), params.get("variant"), params.get("workload"))
+        elif path == "/metrics":
+            return backend.list_metrics(params.get("device"), params.get("variant"))
+        elif path == "/signal":
+            return backend.get_signal(
+                device=params.get("device"),
+                variant=params.get("variant"),
+                workload=params.get("workload"),
+                run=params.get("run"),
+                metric=params.get("metric"),
+                window_size=params.get("window_size", 1)
+            )
+        else:
+            raise ValueError(f"Unknown local path: {path}")
+    except Exception as e:
+        st.error(f"Local query error: {e}")
         st.stop()
 
 
-def fetch_signal(device, workload, run, metric, window_size=1):
+def fetch_signal(device, variant, workload, run, metric, window_size=1):
     """Fetch a single signal from the backend API."""
     return api_get(
         "/signal",
         {
             "device": device,
+            "variant": variant,
             "workload": workload,
             "run": run,
             "metric": metric,
@@ -70,18 +98,18 @@ def family_sort_key(run_name):
     return (family_index, run_name.lower())
 
 
-def build_ratio_for_run(device, workload, run, numerator_metric, denominator_metric):
+def build_ratio_for_run(device, variant, workload, run, numerator_metric, denominator_metric):
     """Build one ratio series for a single run with session-scoped caching."""
     if numerator_metric == denominator_metric:
         raise ValueError("Numerator and denominator must be different metrics")
 
-    cache_key = (device, workload, run, numerator_metric, denominator_metric)
+    cache_key = (device, variant, workload, run, numerator_metric, denominator_metric)
     cache = st.session_state.scatter_ratio_cache
     if cache_key in cache:
         return cache[cache_key]
 
-    numerator_signal = fetch_signal(device, workload, run, numerator_metric)
-    denominator_signal = fetch_signal(device, workload, run, denominator_metric)
+    numerator_signal = fetch_signal(device, variant, workload, run, numerator_metric)
+    denominator_signal = fetch_signal(device, variant, workload, run, denominator_metric)
 
     numerator_values = np.array(numerator_signal["values"], dtype=float)
     denominator_values = np.array(denominator_signal["values"], dtype=float)
@@ -185,21 +213,24 @@ if "scatter_ratio_cache" not in st.session_state:
 
 devices = api_get("/devices")
 
-scope_col_1, scope_col_2 = st.columns([1, 1])
+scope_col_1, scope_col_2, scope_col_3 = st.columns([1, 1, 1])
 with scope_col_1:
     selected_device = st.selectbox("Device", devices, key="scatter_device") if devices else None
 with scope_col_2:
-    workloads = api_get("/workloads", {"device": selected_device}) if selected_device else []
+    variants = api_get("/variants", {"device": selected_device}) if selected_device else []
+    selected_variant = st.selectbox("Variant/Attack", variants, key="scatter_variant") if variants else None
+with scope_col_3:
+    workloads = api_get("/workloads", {"device": selected_device, "variant": selected_variant}) if selected_device and selected_variant else []
     selected_workload = (
         st.selectbox("Workload", workloads, key="scatter_workload") if workloads else None
     )
 
 runs = (
-    api_get("/runs", {"device": selected_device, "workload": selected_workload})
-    if selected_device and selected_workload
+    api_get("/runs", {"device": selected_device, "variant": selected_variant, "workload": selected_workload})
+    if selected_device and selected_variant and selected_workload
     else []
 )
-metrics = api_get("/metrics", {"device": selected_device}) if selected_device else []
+metrics = api_get("/metrics", {"device": selected_device, "variant": selected_variant}) if selected_device and selected_variant else []
 
 st.subheader("Files to Include")
 
@@ -277,6 +308,7 @@ selected_runs_sorted = sorted(selected_runs, key=family_sort_key)
 for index, run in enumerate(selected_runs_sorted):
     x_ratio = build_ratio_for_run(
         selected_device,
+        selected_variant,
         selected_workload,
         run,
         x_numerator,
@@ -284,6 +316,7 @@ for index, run in enumerate(selected_runs_sorted):
     )
     y_ratio = build_ratio_for_run(
         selected_device,
+        selected_variant,
         selected_workload,
         run,
         y_numerator,

@@ -3,9 +3,13 @@ import requests
 import plotly.graph_objects as go
 
 # -----------------------
-# Config
+# Config & Local Backend Import
 # -----------------------
-API_BASE = "http://127.0.0.1:8000"
+import sys
+import os
+# Append project root to path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+from backend import app as backend
 
 st.set_page_config(
     page_title="VizLab - Single Signal",
@@ -14,40 +18,60 @@ st.set_page_config(
 
 st.title("Single Signal Explorer")
 
-# -----------------------
-# API Helper
-# -----------------------
 def api_get(path, params=None):
-    """Fetch data from backend API."""
+    """Route request locally to backend processing module."""
+    if params is None:
+        params = {}
     try:
-        r = requests.get(f"{API_BASE}{path}", params=params)
-        r.raise_for_status()
-        return r.json()
+        if path == "/devices":
+            return backend.list_devices()
+        elif path == "/variants":
+            return backend.list_variants(params.get("device"))
+        elif path == "/workloads":
+            return backend.list_workloads(params.get("device"), params.get("variant"))
+        elif path == "/runs":
+            return backend.list_runs(params.get("device"), params.get("variant"), params.get("workload"))
+        elif path == "/metrics":
+            return backend.list_metrics(params.get("device"), params.get("variant"))
+        elif path == "/signal":
+            return backend.get_signal(
+                device=params.get("device"),
+                variant=params.get("variant"),
+                workload=params.get("workload"),
+                run=params.get("run"),
+                metric=params.get("metric"),
+                window_size=params.get("window_size", 1)
+            )
+        else:
+            raise ValueError(f"Unknown local path: {path}")
     except Exception as e:
-        st.error(f"API error: {e}")
+        st.error(f"Local query error: {e}")
         st.stop()
 
 
 def api_post(path):
-    """POST request to backend API."""
+    """POST request routed locally."""
     try:
-        r = requests.post(f"{API_BASE}{path}")
-        r.raise_for_status()
-        return r.json()
+        if path == "/reload":
+            backend.load_registry()
+            return {"status": "success"}
+        else:
+            raise ValueError(f"Unknown local POST path: {path}")
     except Exception as e:
-        st.error(f"API error: {e}")
+        st.error(f"Local query error: {e}")
         st.stop()
 
 
 # -----------------------
 # Signal Fetch
 # -----------------------
-def fetch_signal(device, workload, run, metric, window_size=1):
+def fetch_signal(device, variant, workload, run, metric, window_size=1):
     """Fetch signal from backend API."""
     signal = api_get(
         "/signal",
         {
             "device": device,
+            "variant": variant,
             "workload": workload,
             "run": run,
             "metric": metric,
@@ -172,7 +196,14 @@ st.sidebar.selectbox(
     key="device"
 )
 
-workloads = api_get("/workloads", {"device": st.session_state.device})
+variants = api_get("/variants", {"device": st.session_state.device})
+st.sidebar.selectbox(
+    "Variant/Attack",
+    variants,
+    key="variant"
+)
+
+workloads = api_get("/workloads", {"device": st.session_state.device, "variant": st.session_state.variant})
 st.sidebar.selectbox(
     "Workload",
     workloads,
@@ -183,6 +214,7 @@ runs = api_get(
     "/runs",
     {
         "device": st.session_state.device,
+        "variant": st.session_state.variant,
         "workload": st.session_state.workload,
     }
 )
@@ -192,7 +224,7 @@ st.sidebar.selectbox(
     key="run"
 )
 
-metrics = api_get("/metrics", {"device": st.session_state.device})
+metrics = api_get("/metrics", {"device": st.session_state.device, "variant": st.session_state.variant})
 st.sidebar.selectbox(
     "Metric",
     metrics,
@@ -207,6 +239,7 @@ load_clicked = st.sidebar.button("Load signal")
 if load_clicked:
     signal = fetch_signal(
         st.session_state.device,
+        st.session_state.variant,
         st.session_state.workload,
         st.session_state.run,
         st.session_state.metric,

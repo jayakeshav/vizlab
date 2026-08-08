@@ -15,8 +15,8 @@ A research visualization tool for hardware performance counter time-series data.
 
 ## Architecture
 
-- **Backend**: FastAPI (Python) — Loads device configs, manages signal fetching from CSV files, computes ratio metrics
-- **Frontend**: Streamlit (Python) — Interactive multi-page UI for signal selection, visualization, comparison, and ratio analysis
+- **Unified In-Memory Mode (Default)**: Streamlit imports the backend data processing module directly and processes all data in-memory within a single process. This completely bypasses network calls, port conflicts, and HTTP latency.
+- **REST API Mode (Optional)**: If needed, the FastAPI backend can run standalone to expose REST endpoints (useful for third-party client integrations).
 
 ## Project Structure
 
@@ -73,17 +73,13 @@ pip install -r requirements.txt
 
 ### Quick Start (Using Makefile)
 
-From the project root, run both servers in separate terminals:
+From the project root, run the unified application:
 
 ```bash
-# Terminal 1: Start backend
-make backend
-
-# Terminal 2: Start frontend
-make frontend
+make start
 ```
 
-The backend will be available at `http://127.0.0.1:8000` and the frontend at `http://localhost:8501`
+This single command launches the Streamlit frontend, which automatically loads and processes the datasets in-memory. The application will be available at `http://localhost:8501`.
 
 See all available commands with `make help`
 
@@ -155,16 +151,17 @@ Features:
 
 Click the 🔄 button in the sidebar to reload the backend device registry without restarting the server.
 
-## API Endpoints
+## API Endpoints (FastAPI Mode)
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/devices` | GET | List all available devices |
-| `/workloads` | GET | List workloads for a device |
-| `/runs` | GET | List runs for a device + workload |
-| `/metrics` | GET | List metrics for a device (ordered by device_config batches) |
-| `/signal` | GET | Fetch a single signal with attack labels |
-| `/reload` | POST | Reload backend device registry |
+| `/devices` | GET | List all base device directories |
+| `/variants` | GET | List available variants for a device (e.g. `v1`, `v2`, `PP`, `benign`) |
+| `/workloads` | GET | List workloads for a device + variant |
+| `/runs` | GET | List runs for a device + variant + workload (automatically merges benign runs for comparison) |
+| `/metrics` | GET | List metrics for a device + variant (ordered by configs) |
+| `/signal` | GET | Fetch a single signal (attack or benign with dynamic routing) |
+| `/reload` | POST | Reload dataset registry |
 
 ## Data Format
 

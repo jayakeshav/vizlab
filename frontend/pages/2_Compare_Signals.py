@@ -4,9 +4,13 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 # -----------------------
-# Config
+# Config & Local Backend Import
 # -----------------------
-API_BASE = "http://127.0.0.1:8000"
+import sys
+import os
+# Append project root to path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+from backend import app as backend
 
 st.set_page_config(
     page_title="VizLab - Compare Signals",
@@ -16,28 +20,49 @@ st.set_page_config(
 st.title("Compare Two Signals")
 
 # -----------------------
-# API Helper
+# API Helper (Routed Locally)
 # -----------------------
 def api_get(path, params=None):
-    """Fetch data from backend API."""
+    """Route request locally to backend processing module."""
+    if params is None:
+        params = {}
     try:
-        r = requests.get(f"{API_BASE}{path}", params=params)
-        r.raise_for_status()
-        return r.json()
+        if path == "/devices":
+            return backend.list_devices()
+        elif path == "/variants":
+            return backend.list_variants(params.get("device"))
+        elif path == "/workloads":
+            return backend.list_workloads(params.get("device"), params.get("variant"))
+        elif path == "/runs":
+            return backend.list_runs(params.get("device"), params.get("variant"), params.get("workload"))
+        elif path == "/metrics":
+            return backend.list_metrics(params.get("device"), params.get("variant"))
+        elif path == "/signal":
+            return backend.get_signal(
+                device=params.get("device"),
+                variant=params.get("variant"),
+                workload=params.get("workload"),
+                run=params.get("run"),
+                metric=params.get("metric"),
+                window_size=params.get("window_size", 1)
+            )
+        else:
+            raise ValueError(f"Unknown local path: {path}")
     except Exception as e:
-        st.error(f"API error: {e}")
+        st.error(f"Local query error: {e}")
         st.stop()
 
 
 # -----------------------
 # Signal Fetch
 # -----------------------
-def fetch_signal(device, workload, run, metric, window_size=1):
+def fetch_signal(device, variant, workload, run, metric, window_size=1):
     """Fetch signal from backend API."""
     signal = api_get(
         "/signal",
         {
             "device": device,
+            "variant": variant,
             "workload": workload,
             "run": run,
             "metric": metric,
@@ -59,7 +84,14 @@ device_a = st.sidebar.selectbox(
     key="device_a"
 )
 
-workloads_a = api_get("/workloads", {"device": device_a})
+variants_a = api_get("/variants", {"device": device_a})
+variant_a = st.sidebar.selectbox(
+    "Variant/Attack A",
+    variants_a,
+    key="variant_a"
+)
+
+workloads_a = api_get("/workloads", {"device": device_a, "variant": variant_a})
 workload_a = st.sidebar.selectbox(
     "Workload A",
     workloads_a,
@@ -70,6 +102,7 @@ runs_a = api_get(
     "/runs",
     {
         "device": device_a,
+        "variant": variant_a,
         "workload": workload_a,
     }
 )
@@ -79,7 +112,7 @@ run_a = st.sidebar.selectbox(
     key="run_a"
 )
 
-metrics_a = api_get("/metrics", {"device": device_a})
+metrics_a = api_get("/metrics", {"device": device_a, "variant": variant_a})
 metric_a = st.sidebar.selectbox(
     "Metric A",
     metrics_a,
@@ -97,7 +130,14 @@ device_b = st.sidebar.selectbox(
     key="device_b"
 )
 
-workloads_b = api_get("/workloads", {"device": device_b})
+variants_b = api_get("/variants", {"device": device_b})
+variant_b = st.sidebar.selectbox(
+    "Variant/Attack B",
+    variants_b,
+    key="variant_b"
+)
+
+workloads_b = api_get("/workloads", {"device": device_b, "variant": variant_b})
 workload_b = st.sidebar.selectbox(
     "Workload B",
     workloads_b,
@@ -108,6 +148,7 @@ runs_b = api_get(
     "/runs",
     {
         "device": device_b,
+        "variant": variant_b,
         "workload": workload_b,
     }
 )
@@ -117,7 +158,7 @@ run_b = st.sidebar.selectbox(
     key="run_b"
 )
 
-metrics_b = api_get("/metrics", {"device": device_b})
+metrics_b = api_get("/metrics", {"device": device_b, "variant": variant_b})
 metric_b = st.sidebar.selectbox(
     "Metric B",
     metrics_b,
@@ -131,8 +172,8 @@ load_clicked = st.sidebar.button("Load signals")
 # Fetch and Plot
 # -----------------------
 if load_clicked:
-    signal_a = fetch_signal(device_a, workload_a, run_a, metric_a, window_size=1)
-    signal_b = fetch_signal(device_b, workload_b, run_b, metric_b, window_size=1)
+    signal_a = fetch_signal(device_a, variant_a, workload_a, run_a, metric_a, window_size=1)
+    signal_b = fetch_signal(device_b, variant_b, workload_b, run_b, metric_b, window_size=1)
     st.session_state.signal_a = signal_a
     st.session_state.signal_b = signal_b
 
